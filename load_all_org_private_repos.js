@@ -13,28 +13,26 @@ github.misc.getRateLimit({}, function (err, res) {
 })
 
 github.repos.getForOrg({ 'org': settings.organization, 'type': 'private' }, function (err, res) {
-    if (err) {
-        console.log(JSON.stringify(err));
-    }
     let promise = new Promise((resolve, reject) => {
-        resolveAllPrivateRepos(res, resolve, reject);
+        resolveAllPrivateRepos(err, res, resolve, reject);
     });
     promise.then(function collect(result) {
         return flatten(result);
-    }).then((data) => data.forEach((element, index) => console.log(element)));
+    }).then((data) => data.forEach((element, index) => console.log(element))).catch((result) => console.log(result));
 });
 
 const flatten = list => list.reduce(
     (a, b) => a.concat(Array.isArray(b) ? flatten(b) : b), []
 );
 
-function resolveAllPrivateRepos(res, resolve, reject) {
+function resolveAllPrivateRepos(err, res, resolve, reject) {
+    if (err) return reject("Error: " + JSON.stringify(err));
     let repos = res.data;
     let promises = [];
     for (let repo of repos) {
         promises.push(new Promise((resolve, reject) => {
             github.repos.getCommit({ 'owner': settings.organization, 'repo': repo.name, 'sha': repo.default_branch }, ((err, commit) => {
-                if (err) console.log(err);
+                if (err) return reject("Error: " + JSON.stringify(err));
                 if (commit && commit.data && commit.data.author) {
                     resolve(`${repo.name}, ${repo.full_name}, ${repo.html_url}, ${repo.pushed_at}, ${repo.default_branch}, ${commit.data.author.login}`)
                 } else if (commit && commit.data && commit.data.committer) {
@@ -50,12 +48,10 @@ function resolveAllPrivateRepos(res, resolve, reject) {
     if (github.hasNextPage(res)) {
         let nextPromise = new Promise((resolve, reject) => {
             github.getNextPage(res, function (err, res) {
-                resolveAllPrivateRepos(res, resolve, reject);
+                resolveAllPrivateRepos(err, res, resolve, reject);
             });
         });
         promises.push(nextPromise);
-        resolve(Promise.all(promises));
-    } else {
-        resolve(Promise.all(promises));
     }
+    resolve(Promise.all(promises));
 }
