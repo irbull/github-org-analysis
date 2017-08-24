@@ -12,44 +12,36 @@ github.misc.getRateLimit({}, function (err, res) {
     console.log(JSON.stringify(res));
 })
 
-github.orgs.getMembers({ 'org': settings.organization, 'role': 'all' }, function (err, res) {
-    let promise = new Promise((resolve, reject) => {
-        resolveAllUsers(err, res, resolve, reject);
-    });
-    promise.then(function collect(result) {
-        return flatten(result);
-    }).then((data) => {
-        console.log(data);
-        console.log(data.length);
-    }).catch((result)=>console.log(JSON.stringify(result)));
-});
+getMembers(settings.organization, 'all').then((data) => {
+    for (let item of data) {
+        console.log(item);
+    }
+    console.log(`Size: ${data.length}`);
+}).catch((result) => console.log(result));
 
-const flatten = list => list.reduce(
+const flatten = list => Array.isArray(list) ? list.reduce(
     (a, b) => a.concat(Array.isArray(b) ? flatten(b) : b), []
-);
+) : list;
 
-function resolveAllUsers(err, res, resolve, reject) {
-    if (err) return reject("Error: " + JSON.stringify(err));
-    let users = res.data;
+function getMembers(organization, role) {
+    return github.orgs.getMembers({ 'org': organization, 'role': role }).then((res) => resolveAllUsers(res)).then(data => flatten(data));
+}
+
+function resolveAllUsers(res) {
     let promises = [];
-    for (let user of users) {
-        promises.push(new Promise((resolve, reject) => {
-            github.users.getById({ 'id': user.id }, function (err, githubUser) {
-                if (err) return reject("Error: " + JSON.stringify(err));
-                github.orgs.getOrgMembership({ 'org': 'EclipseSource', 'username': user.login }, function (err, orgMember) {
-                    if (err) return reject("Error: " + JSON.stringify(err));
-                    resolve(`${user.login}, ${githubUser.data.email}, ${githubUser.data.name}, ${githubUser.data.html_url}, ${orgMember.data.role}`);
-                })
-            })
-        }));
+    for (let user of res.data) {
+        promises.push(resolveUser(user));
     }
     if (github.hasNextPage(res)) {
-        let nextPromise = new Promise((resolve, reject) => {
-            github.getNextPage(res, function (err, res) {
-                resolveAllUsers(err, res, resolve, reject);
-            });
-        });
-        promises.push(nextPromise);
+        promises.push(github.getNextPage(res).then((res) => resolveAllUsers(res)));
     }
-    resolve(Promise.all(promises));
+    return Promise.all(promises);
+}
+
+function resolveUser(user) {
+    return github.users.getById({ 'id': user.id }).then((githubUser) =>
+        github.orgs.getOrgMembership({ 'org': 'EclipseSource', 'username': user.login }).then((orgMember) =>
+            `${user.login}, ${githubUser.data.email}, ${githubUser.data.name}, ${githubUser.data.html_url}, ${orgMember.data.role}`
+        )
+    );
 }

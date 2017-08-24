@@ -12,46 +12,42 @@ github.misc.getRateLimit({}, function (err, res) {
     console.log(JSON.stringify(res));
 })
 
-github.repos.getForOrg({ 'org': settings.organization, 'type': 'private' }, function (err, res) {
-    let promise = new Promise((resolve, reject) => {
-        resolveAllPrivateRepos(err, res, resolve, reject);
-    });
-    promise.then(function collect(result) {
-        return flatten(result);
-    }).then((data) => data.forEach((element, index) => console.log(element))).catch((result) => console.log(result));
-});
+getRepositories(settings.organization, 'private').then((data) => {
+    for (let item of data) {
+        console.log(item);
+    }
+    console.log(`Size: ${data.length}`);
+}).catch((result) => console.log(result));
+
+function getRepositories(org, type) {
+    return github.repos.getForOrg({ 'org': org, 'type': type }).then((res) => resolveAllPrivateRepos(res)).then((data) => flatten(data));
+}
 
 const flatten = list => list.reduce(
     (a, b) => a.concat(Array.isArray(b) ? flatten(b) : b), []
 );
 
-function resolveAllPrivateRepos(err, res, resolve, reject) {
-    if (err) return reject("Error: " + JSON.stringify(err));
-    let repos = res.data;
+function resolveAllPrivateRepos(res) {
     let promises = [];
-    for (let repo of repos) {
-        promises.push(new Promise((resolve, reject) => {
-            github.repos.getCommit({ 'owner': settings.organization, 'repo': repo.name, 'sha': repo.default_branch }, ((err, commit) => {
-                if (err) return reject("Error: " + JSON.stringify(err));
-                if (commit && commit.data && commit.data.author) {
-                    resolve(`${repo.name}, ${repo.full_name}, ${repo.html_url}, ${repo.pushed_at}, ${repo.default_branch}, ${commit.data.author.login}`)
-                } else if (commit && commit.data && commit.data.committer) {
-                    resolve(`${repo.name}, ${repo.full_name}, ${repo.html_url}, ${repo.pushed_at}, ${repo.default_branch}, ${commit.data.committer.login}`)
-                } else if (commit && commit.data && commit.data.commit && commit.data.commit.committer) {
-                    resolve(`${repo.name}, ${repo.full_name}, ${repo.html_url}, ${repo.pushed_at}, ${repo.default_branch}, ${commit.data.commit.committer.email}`)
-                } else {
-                    resolve(`${repo.name}, ${repo.full_name}, ${repo.html_url}, ${repo.pushed_at}, ${repo.default_branch}, undefined`)
-                }
-            }));
-        }));
+    for (let repo of res.data) {
+        promises.push(resolveRepository(repo));
     }
     if (github.hasNextPage(res)) {
-        let nextPromise = new Promise((resolve, reject) => {
-            github.getNextPage(res, function (err, res) {
-                resolveAllPrivateRepos(err, res, resolve, reject);
-            });
-        });
-        promises.push(nextPromise);
+        promises.push(github.getNextPage(res).then((res) => resolveAllPrivateRepos(res)));
     }
-    resolve(Promise.all(promises));
+    return Promise.all(promises);
+}
+
+function resolveRepository(repo) {
+    return github.repos.getCommit({ 'owner': settings.organization, 'repo': repo.name, 'sha': repo.default_branch }).then((commit) => {
+        if (commit && commit.data && commit.data.author) {
+            return (`${repo.name}, ${repo.full_name}, ${repo.html_url}, ${repo.pushed_at}, ${repo.default_branch}, ${commit.data.author.login}`);
+        } else if (commit && commit.data && commit.data.committer) {
+            return (`${repo.name}, ${repo.full_name}, ${repo.html_url}, ${repo.pushed_at}, ${repo.default_branch}, ${commit.data.committer.login}`)
+        } else if (commit && commit.data && commit.data.commit && commit.data.commit.committer) {
+            return (`${repo.name}, ${repo.full_name}, ${repo.html_url}, ${repo.pushed_at}, ${repo.default_branch}, ${commit.data.commit.committer.email}`)
+        } else {
+            return (`${repo.name}, ${repo.full_name}, ${repo.html_url}, ${repo.pushed_at}, ${repo.default_branch}, undefined`)
+        }
+    }).catch((err) => `${repo.name}, ${repo.full_name}, ${repo.html_url}, ${repo.pushed_at}, ${repo.default_branch}, undefined`);
 }
