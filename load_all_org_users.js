@@ -19,9 +19,9 @@ getMembers(settings.organization, 'all').then((data) => {
     console.log(`Size: ${data.length}`);
 }).catch((result) => console.log(result));
 
-const flatten = list => Array.isArray(list) ? list.reduce(
-    (a, b) => a.concat(Array.isArray(b) ? flatten(b) : b), []
-) : list;
+function flatten(list) {
+    return Array.isArray(list) ? list.reduce((a,b) => a.concat(flatten(b)), []) : list;
+}
 
 function getMembers(organization, role) {
     return github.orgs.getMembers({ 'org': organization, 'role': role }).then((res) => resolveAllUsers(res)).then(data => flatten(data));

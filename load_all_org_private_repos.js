@@ -23,9 +23,9 @@ function getRepositories(org, type) {
     return github.repos.getForOrg({ 'org': org, 'type': type }).then((res) => resolveAllPrivateRepos(res)).then((data) => flatten(data));
 }
 
-const flatten = list => list.reduce(
-    (a, b) => a.concat(Array.isArray(b) ? flatten(b) : b), []
-);
+function flatten(list) {
+    return Array.isArray(list) ? list.reduce((a,b) => a.concat(flatten(b)), []) : list;
+}
 
 function resolveAllPrivateRepos(res) {
     let promises = [];
